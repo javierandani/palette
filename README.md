@@ -1,0 +1,2 @@
+# palette
+Image processing project
