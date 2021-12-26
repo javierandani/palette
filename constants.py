@@ -1,16 +1,3 @@
-global sampling_rate, _sampling_rate, number_bins, rgb_max_value, hsv_max_value, number_colors, default_palette, palette, colour_format, _format
-
-# Sampling rate (histogram)
-#sampling_rate = 5
-
-# Sampling rate (image representation)
-#_sampling_rate = 2
-
-# Number of clusters
-#number_bins = {"RGB": [16]
-#              , "HSV": [16,3,3]
-#              }
-
 # Maximum values
 maximum_values = {"RGB": [255]
                   , "HSV": [360, 255, 255]

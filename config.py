@@ -1,5 +1,3 @@
-global sampling_rate, _sampling_rate, number_bins, number_colors, default_palette, colour_format
-
 # Sampling rate (histogram)
 sampling_rate = 5
 
@@ -19,3 +17,6 @@ default_palette = ["#DAF7A6","#FFC300","#FF5733","#C70039","#900C3F","#581845"]
 
 # Colour format to produce both clustering and transformations -> ["RGB","HSV"]
 colour_format = "RGB"
+
+# When changing the colour palette, define the intensity of the change ["soft","medium","hard"]
+change_mode = "soft"
