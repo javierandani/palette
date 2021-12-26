@@ -1,7 +1,9 @@
 import numpy as np
+import math
 import cv2
 from PIL import ImageColor
 from skimage.transform import downscale_local_mean
+from sklearn.cluster import *
 import constants as c
 import config as cf
 import functions as f
@@ -155,3 +157,120 @@ def normalizeImageFunction(image, format):
         image = normalizeFunction(image)
 
     return image
+
+
+def cluster(array, method):
+
+    # If array has 3D, turn into 2D
+    if (len(array.shape) == 3):
+        array = np.reshape(array,
+                           (array.shape[0] * array.shape[1],
+                            array.shape[2]))
+
+    # Apply one clustering technique
+    clustering = {
+        'AffinityPropagation': AffinityPropagation(
+                damping = 0.5
+                , max_iter = cf.maximum_iterations
+                , convergence_iter = math.floor( cf.maximum_iterations*0.5 ) # 50% of the iterations
+                , copy = True
+                , preference = None
+                , affinity = 'euclidean'
+                , verbose = False
+                , random_state = None
+            )
+        , 'KMeans': KMeans(
+            n_clusters = math.floor( 1.5*cf.number_colors ) # At least a 50% more of the number of colours to be extracted
+            , init = 'k-means++'
+            , n_init = 10
+            , max_iter = cf.maximum_iterations
+            , tol = 1e-4
+            , verbose = 0
+            , random_state = None
+            , copy_x = True
+            , algorithm = 'auto'
+        )
+        , 'DBSCAN': DBSCAN(
+            eps = 0.5
+            , min_samples = math.floor( max( array.shape ) * 0.05 ) # At least 5% of the points
+            , metric = 'euclidean'
+            , metric_params = None
+            , algorithm = 'auto' # Can be "auto", "ball_tree", "kd_tree", "brute"
+            , leaf_size = 30
+            , p = None
+            , n_jobs = None
+        )
+        , 'AgglomerativeClustering': AgglomerativeClustering(
+            n_clusters = None
+            , affinity = 'euclidean'
+            , memory = None
+            , connectivity = None
+            , compute_full_tree = 'auto'
+            , linkage = 'ward'
+            , distance_threshold = None
+            , compute_distances = False
+        )
+        , 'Birch': Birch(
+            threshold = 0.5
+            , branching_factor = 50
+            , n_clusters = None
+            , compute_labels = True
+            , copy = True
+        )
+        , 'SpectralClustering': SpectralClustering(
+            n_clusters = math.floor( 1.5*cf.number_colors ) # At least a 50% more of the number of colours to be extracted
+            , eigen_solver = None
+            , n_components = None
+            , random_state = None
+            , n_init = 10
+            , gamma = 1.0
+            , affinity = 'rbf'
+            , n_neighbors = 10  # Ignored for affinity = "rbf"
+            , eigen_tol = 0.0
+            , assign_labels = 'kmeans'
+            , degree = 3
+            , coef0 = 1
+            , kernel_params = None
+            , n_jobs = None
+            , verbose = False
+        )
+    }.get( method ).fit( array )
+
+    # Extract the clustering centers, and the label of each points
+    labels = clustering.labels_
+    centroids = getCentroids(array, labels)
+
+    # Compose the count of the clusters
+    centroid_order = np.zeros((max(centroids.shape), 2))
+    for r in range(len(centroids)):
+        centroid_order[r, 0] = int(r)
+        centroid_order[r, 1] = len(labels[labels == r])
+
+    # Reorder centroids
+    centroid_order = centroid_order[np.argsort(centroid_order[:, 1])][::-1]
+
+    # Assign the N first elements to the palette
+    palette = centroids[
+              centroid_order[:cf.number_colors, 0].astype(np.uint8)
+    , :
+              ].astype(np.uint8)
+
+    return palette
+
+
+def getCentroids(array, labels):
+
+    # Once the clustering has been carried out, get the centroids based on the points and their labelling
+    centroids = np.zeros( (
+        max(labels)+1
+        , c.dimensions.get(cf.colour_format)
+    ) )
+
+    # Compute for all the elements in the array, the mean coordinates
+    for r in range(0,max(centroids.shape)):
+        centroids[r,:] = np.mean(
+            array[labels == r]
+            , axis = 0
+        )
+
+    return centroids

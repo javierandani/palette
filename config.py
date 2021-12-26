@@ -5,7 +5,7 @@ sampling_rate = 5
 _sampling_rate = 2
 
 # Number of clusters
-number_bins = {"RGB": [16]
+number_bins = {"RGB": [3]
               , "HSV": [16,3,3]
               }
 
@@ -20,3 +20,9 @@ colour_format = "RGB"
 
 # When changing the colour palette, define the intensity of the change ["soft","medium","hard"]
 change_mode = "soft"
+
+# Clustering technique (if needed)
+clustering_technique = "KMeans"
+
+# Maximum iteration (clustering algorithms)
+maximum_iterations = 500

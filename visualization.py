@@ -39,7 +39,7 @@ def image_palette_plot(fileName, image, palette, saveFig):
 
     # Save image
     if saveFig:
-        plt.savefig('img/palette_'+fileName)
+        plt.savefig('img/'+fileName)
 
 
 # Represent the colour palette for this image
