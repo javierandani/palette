@@ -20,18 +20,17 @@ def image_palette_plot(fileName, image, palette, saveFig):
     # Suplitle (without file extension)
     fig.suptitle(fileName.split('.')[0])
 
-    # Plot image (transform to RGB space). Only use cmap if the colour format is not RGB
-    {
-        True: axFigure.imshow( image )
-        , False: None if cf.colour_format == "RGB" else axFigure.imshow( image , cmap = str.lower(cf.colour_format) )
-    }.get(cf.colour_format == "RGB")
+    # Plot image (transform to RGB space)
+    axFigure.imshow(
+        convers.image_conversion(image, cf.colour_format, "RGB")
+    )
 
     # Plot palette colour
     for iter in range(len(palette)):
         x = [iter, iter + 1]
         y = [1, 1]
         axPalette.fill_between(x, y, color = palette[iter])     # Area chart
-        plt.show(block = False)                                 # Refresh image
+        #plt.show(block = False)                                 # Refresh image
 
     # Remove axis
     axFigure.axis('off')
@@ -62,25 +61,67 @@ def figure_palette_plot(fileName, image, palette):
 def represent_pixels(array):
 
     # Normalize colours
-    colours = np.array( [ convers.colour_conversion( a , cf.colour_format , "RGB") for a in array ] )
+    colours = convers.normalize(
+        np.array( [ convers.colour_conversion( a , cf.colour_format , "RGB") for a in array ] )
+        , "RGB"
+        , True
+    )
 
     # Represent figure
     fig = plt.figure()
     ax = fig.add_subplot(projection = c.projections[cf.colour_format])
-    {
-        "polar": ax.scatter(
-                array[:,0]
-                , array[:,1] / np.max(array[:,1])
-                , c = convers.normalize( array , "RGB" , True )
-                , cmap = "RGB"
-            )
-        , "3d": ax.scatter(
-                array[:,0]
-                , array[:,1]
-                , array[:,2]
-                , c = convers.normalize( colours , "RGB" , True )
-                , cmap = "RGB"
-            )
+
+    # Config and scatter functions
+    config = {
+        "polar":
+            {
+                "theta": array[:,0] * 2 * np.pi / np.max(array[:,0])
+                , "radius": array[:,1] / np.max(array[:,1])
+                , "colours": colours # convers.normalize( array , cf.colour_format , True ) # array[:,0] * 2 * np.pi / np.max(array[:,0])
+                , "area": 200 * (array[:,1] / np.max(array[:,1])) ** 2
+                , "cmap": "RGB"
+                , "alpha": None
+            }
+        , "3d":
+            {
+                "x": array[:,0]
+                , "y": array[:,1]
+                , "z": array[:,2]
+                , "colours": convers.normalize( colours , "RGB" , True )
+                , "cmap": cf.colour_format
+            }
     }.get(c.projections[cf.colour_format])
+    represent_function = {
+        "polar": lambda x, y: polar_graph( x , y )
+        , "3d": lambda x, y: scatter_graph( x , y )
+    }.get(c.projections[cf.colour_format])
+
+    # Execute functions
+    represent_function(
+        ax
+        , config
+    )
     plt.show(block = False)
 
+
+def polar_graph( ax , config ):
+
+    ax.scatter(
+        config["theta"]
+        , config["radius"]
+        , c = config["colours"]
+        , s = config["area"]
+        , cmap = config["cmap"]
+        , alpha = config["alpha"]
+    )
+
+
+def scatter_graph( ax , config ):
+
+    ax.scatter(
+        config["x"]
+        , config["y"]
+        , config["z"]
+        , c = config["colours"]
+        , cmap = config["cmap"]
+    )

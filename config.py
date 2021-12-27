@@ -16,13 +16,16 @@ number_colors = 5
 default_palette = ["#DAF7A6","#FFC300","#FF5733","#C70039","#900C3F","#581845"]
 
 # Colour format to produce both clustering and transformations -> ["RGB","HSV"]
-colour_format = "RGB"
+colour_format = "HSV"
+
+# Saturation and value extremse removal interval (HSV pre-processing)
+HSV_removal_interval = {"min": 10, "max": 100}
 
 # When changing the colour palette, define the intensity of the change ["soft","medium","hard"]
 change_mode = "soft"
 
-# Clustering technique (if needed)
-clustering_technique = "KMeans"
+# Clustering technique
+clustering_technique = "DBSCAN"
 
 # Maximum iteration (clustering algorithms)
 maximum_iterations = 500

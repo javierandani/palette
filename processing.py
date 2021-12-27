@@ -4,25 +4,29 @@ import cv2
 from PIL import ImageColor
 from skimage.transform import downscale_local_mean
 from sklearn.cluster import *
-import constants as c
 import config as cf
+import constants as c
 import functions as f
 import conversions as convers
 
 # Read image
 def read_image(files , format):
 
-    return {
-        "RGB": cv2.imread( files )[:, :, ::-1].astype(np.uint8)
-        , "HSV": cv2.cvtColor( cv2.imread( files ) , cv2.COLOR_RGB2HSV )
-    }.get(format)
+    image = cv2.imread( files )[:, :, ::-1].astype(np.uint8)
+
+    return convers.image_conversion(image , "RGB" , cf.colour_format )
+
+    #return {
+    #   "RGB": cv2.imread( files )[:, :, ::-1].astype(np.uint8)
+    #    , "HSV": cv2.cvtColor( cv2.imread( files ) , cv2.COLOR_BGR2HSV )
+    #}.get(format)
 
 
 # Extract all points from image into a nx3 vector
 def extract_pixels(image, factor):
 
     # Change image format to RGB
-    image = convers.change_image_format(image, cf.colour_format, "RGB")
+    #image = convers.change_image_format(image, cf.colour_format, "RGB")
 
     # Image resampling
     array = downscale_local_mean(image
@@ -136,29 +140,6 @@ def palette_change(image, originPalette, destinyPalette):
     return image, new_palette
 
 
-def normalizeImageFunction(image, format):
-
-    # Get maximum and minimum values
-    minimum_values = c.minimum_values.get(format) if len(c.minimum_values.get(format)) == c.dimensions.get(format) else c.minimum_values.get(format)[0]*np.ones(c.dimensions.get(format))
-    maximum_values = c.maximum_values.get(format) if len(c.maximum_values.get(format)) == c.dimensions.get(format) else c.maximum_values.get(format)[0]*np.ones(c.dimensions.get(format))
-
-    # Normalize image (establish boundaries)
-    boundariesFunction = lambda x, y, z : np.clip( x , y , z)
-    normalizeFunction = lambda x : np.array(
-        [boundariesFunction( x[i] , minimum_values[i] , maximum_values[i] ) for i in range(len(x))]
-    )
-
-    # If the image is a 3D array
-    if len(image.shape) > 1:
-        image = np.array(
-            [ normalizeFunction(i) for i in image ]
-        )
-    else:
-        image = normalizeFunction(image)
-
-    return image
-
-
 def cluster(array, method):
 
     # If array has 3D, turn into 2D
@@ -166,6 +147,12 @@ def cluster(array, method):
         array = np.reshape(array,
                            (array.shape[0] * array.shape[1],
                             array.shape[2]))
+
+    # Remove incorrect pixels
+    array = removeIncorrectPx(
+        array
+        , cf.colour_format
+    )
 
     # Apply one clustering technique
     clustering = {
@@ -180,13 +167,13 @@ def cluster(array, method):
                 , random_state = None
             )
         , 'KMeans': KMeans(
-            n_clusters = math.floor( 1.5*cf.number_colors ) # At least a 50% more of the number of colours to be extracted
+            n_clusters = cf.number_colors # math.floor( 2*cf.number_colors ) # At least a 50% more of the number of colours to be extracted
             , init = 'k-means++'
             , n_init = 10
             , max_iter = cf.maximum_iterations
             , tol = 1e-4
             , verbose = 0
-            , random_state = None
+            , random_state = 0
             , copy_x = True
             , algorithm = 'auto'
         )
@@ -238,6 +225,13 @@ def cluster(array, method):
 
     # Extract the clustering centers, and the label of each points
     labels = clustering.labels_
+
+    # If all the labels are -1, the clustering algorithm has not worked. Use as a backup KMeans
+    if all(labels == -1):
+        print(method+" has not provided any results. Instead, KMeans method is used instead")
+        return cluster(array, "KMeans")
+
+    # Get all the centroids
     centroids = getCentroids(array, labels)
 
     # Compose the count of the clusters
@@ -251,9 +245,8 @@ def cluster(array, method):
 
     # Assign the N first elements to the palette
     palette = centroids[
-              centroid_order[:cf.number_colors, 0].astype(np.uint8)
-    , :
-              ].astype(np.uint8)
+              centroid_order[:cf.number_colors, 0].astype(np.uint8), :
+    ].astype(np.uint8)
 
     return palette
 
@@ -274,3 +267,45 @@ def getCentroids(array, labels):
         )
 
     return centroids
+
+
+def normalizeImageFunction(image, format):
+
+    # Get maximum and minimum values
+    minimum_values = c.minimum_values.get(format) if len(c.minimum_values.get(format)) == c.dimensions.get(format) else c.minimum_values.get(format)[0]*np.ones(c.dimensions.get(format))
+    maximum_values = c.maximum_values.get(format) if len(c.maximum_values.get(format)) == c.dimensions.get(format) else c.maximum_values.get(format)[0]*np.ones(c.dimensions.get(format))
+
+    # Normalize image (establish boundaries)
+    boundariesFunction = lambda x, y, z : np.clip( x , y , z)
+    normalizeFunction = lambda x : np.array(
+        [boundariesFunction( x[i] , minimum_values[i] , maximum_values[i] ) for i in range(len(x))]
+    )
+
+    # If the image is a 3D array
+    if len(image.shape) > 1:
+        image = np.array(
+            [ normalizeFunction(i) for i in image ]
+        )
+    else:
+        image = normalizeFunction(image)
+
+    return image
+
+
+def removeIncorrectPx(array , format):
+
+    # If array has 3D, turn into 2D
+    if (len(array.shape) == 3):
+        array = np.reshape(array,
+                           (array.shape[0] * array.shape[1],
+                            array.shape[2]))
+
+    # For every pixel, check whether it is valid or not
+    if len(array.shape) > 1:
+        valid_values = np.array(
+            [ f.isInRange( a , c.minimum_values_cluster.get(format) , c.maximum_values_cluster.get(format) ) for a in array ]
+        )
+    else:
+        valid_values = f.isInRange( array , c.minimum_values_cluster.get(format) , c.maximum_values_cluster.get(format) )
+
+    return array[valid_values == True , :]

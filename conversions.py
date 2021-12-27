@@ -14,7 +14,7 @@ def colour_conversion(colour, originFormat, destinyFormat):
         , ("RGB","HEX"): lambda x: rgb2hex( x[0].astype(np.uint8) ,x[1].astype(np.uint8),x[2].astype(np.uint8))
         , ("HSV","RGB"): lambda x: normalize( hsv2rgb(x) , "RGB" , False)
         , ("HSV","HSV"): lambda x: x
-        , ("HSV","HEX"): lambda x: rgb2hex( normalize( hsv2rgb(x) , "RGB" , False ).astype(int) )
+        , ("HSV","HEX"): lambda x: _rgb2hex( normalize( hsv2rgb(x) , "RGB" , False ).astype(int) )
         , ("HEX","RGB"): hex2rgb
         , ("HEX","HSV"): hex2hsv
         , ("HEX","HEX"): lambda x: x
@@ -25,6 +25,20 @@ def colour_conversion(colour, originFormat, destinyFormat):
         return [conversionFunction(c) for c in colour]
     else:
         return conversionFunction(colour)
+
+
+# Colour conversion
+def image_conversion(image, originFormat, destinyFormat):
+
+    # Create a tuple-indexed dictionary
+    conversionFunction = {
+        ("RGB", "RGB"): lambda x: x
+        , ("RGB", "HSV"): lambda x: cv2.cvtColor( x , cv2.COLOR_RGB2HSV )
+        , ("HSV", "RGB"): lambda x: cv2.cvtColor( x , cv2.COLOR_HSV2RGB )
+        , ("HSV", "HSV"): lambda x: x
+    }.get((originFormat, destinyFormat))
+
+    return conversionFunction(image)
 
 
 # HEX to RGB
@@ -53,11 +67,7 @@ def hex2hsv(colour):
 def hsv2rgb(hsv):
 
     # Normalize (if not yet)
-    if(max(hsv) > 1):
-        hsv = np.divide(
-            hsv
-            , c.maximum_values["HSV"]
-        )
+    hsv = normalize(hsv, "HSV", True) if(max(hsv) > 1) else hsv
 
     return np.array( colorsys.hsv_to_rgb( hsv[0] , hsv[1] , hsv[2] ) )
 
@@ -73,6 +83,11 @@ def rgb2hsv(rgb):
         )
 
     return colorsys.hsv_to_rgb( rgb[0] , rgb[1] , rgb[2] )
+
+
+def _rgb2hex(rgb):
+
+    return rgb2hex( rgb[0] , rgb[1] , rgb[2] )
 
 
 # Change image coding
@@ -100,6 +115,6 @@ def normalize(colour, format, normalize):
 
     # If it is an array, then iterate
     if len(colour.shape) > 1:
-        return [normFunction(c) for c in colour]
+        return np.array([normFunction(c) for c in colour])
     else:
         return normFunction(colour)

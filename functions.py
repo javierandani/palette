@@ -23,3 +23,43 @@ def nearest_point(point, references):
 
     # Return de associated point. The nearest is selected
     return references[np.where(distances == np.min(distances))[0][0],:]
+
+
+def isInRange(value, min_value, max_value):
+
+
+    # Check whether the input are arrays
+    if type(value) == np.ndarray:
+
+        # If there is more than 1 point, then check all of them
+        if len(value.shape) > 1:
+
+            # Initialize the vector
+            valid = np.zeros((value.shape[0],1))
+
+            # Convert the max_value and min_value's shape to the one of each element of value
+            if len(max_value) != len(value[0,:]):
+                max_value = [max_value[0]] * len(value)
+            if len(min_value) != len(value[0,:]):
+                min_value = [min_value[0]] * len(value)
+
+            # For every pixel, check that all the components are in range
+            for i in range(0,value.shape[0]):
+                valid[i] = all( value[i,v] == np.clip( value[i,v] , min_value[v] , max_value[v] ) for v in range(0,value.shape[1]) )
+
+        else:
+
+            # Convert the max_value and min_value's shape to the one of each element of value
+            if len(max_value) != len(value):
+                max_value = [max_value[0]] * len(value)
+            if len(min_value) != len(value):
+                min_value = [min_value[0]] * len(value)
+
+            # Initialize the vector
+            valid = all( value[v] == np.clip( value[v] , min_value[v] , max_value[v] ) for v in range(0,value.shape[0]) )
+
+    else:
+
+        valid = value == np.clip( value, min_value , max_value)
+
+    return valid
