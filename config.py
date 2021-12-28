@@ -10,7 +10,7 @@ number_bins = {"RGB": [3]
               }
 
 # Number of colours of the palette
-number_colors = 5
+number_colors = 6
 
 # Default colour palette
 default_palette = ["#DAF7A6","#FFC300","#FF5733","#C70039","#900C3F","#581845"]
@@ -19,7 +19,7 @@ default_palette = ["#DAF7A6","#FFC300","#FF5733","#C70039","#900C3F","#581845"]
 colour_format = "HSV"
 
 # Saturation and value extremse removal interval (HSV pre-processing)
-HSV_removal_interval = {"min": 10, "max": 100}
+removal_interval = {"min": 10, "max": 100}
 
 # When changing the colour palette, define the intensity of the change ["soft","medium","hard"]
 change_mode = "soft"

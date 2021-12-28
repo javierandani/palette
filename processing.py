@@ -16,11 +16,6 @@ def read_image(files , format):
 
     return convers.image_conversion(image , "RGB" , cf.colour_format )
 
-    #return {
-    #   "RGB": cv2.imread( files )[:, :, ::-1].astype(np.uint8)
-    #    , "HSV": cv2.cvtColor( cv2.imread( files ) , cv2.COLOR_BGR2HSV )
-    #}.get(format)
-
 
 # Extract all points from image into a nx3 vector
 def extract_pixels(image, factor):
@@ -149,10 +144,14 @@ def cluster(array, method):
                             array.shape[2]))
 
     # Remove incorrect pixels
-    array = removeIncorrectPx(
+    array = extremeColoursCorrection(
         array
         , cf.colour_format
     )
+    #array = removeIncorrectPx(
+    #    array
+    #    , cf.colour_format
+    #)
 
     # Apply one clustering technique
     clustering = {
@@ -167,7 +166,7 @@ def cluster(array, method):
                 , random_state = None
             )
         , 'KMeans': KMeans(
-            n_clusters = cf.number_colors # math.floor( 2*cf.number_colors ) # At least a 50% more of the number of colours to be extracted
+            n_clusters = cf.number_colors
             , init = 'k-means++'
             , n_init = 10
             , max_iter = cf.maximum_iterations
@@ -292,7 +291,8 @@ def normalizeImageFunction(image, format):
     return image
 
 
-def removeIncorrectPx(array , format):
+# Remove out-of-range pixels
+def removeIncorrectPx( array , format ):
 
     # If array has 3D, turn into 2D
     if (len(array.shape) == 3):
@@ -309,3 +309,38 @@ def removeIncorrectPx(array , format):
         valid_values = f.isInRange( array , c.minimum_values_cluster.get(format) , c.maximum_values_cluster.get(format) )
 
     return array[valid_values == True , :]
+
+
+# Convert to black and white pixels (depending on the colour format)
+def extremeColoursCorrection( array , format ):
+
+    # If array has 3D, turn into 2D
+    if (len(array.shape) == 3):
+        array = np.reshape(array,
+                           (array.shape[0] * array.shape[1],
+                            array.shape[2]))
+
+    # Black and white conditions
+    isBlack = {
+        True: False
+        , False: lambda x, y: x[2] < y[2]
+    }.get(format == "RGB")
+    isWhite = {
+        True: False
+        , False: lambda x, y: ( x[2] > y[2] ) and ( x[1] < y[1] )
+    }.get(format == "RGB")
+
+    # For all the elements in the array, convert them to black or white
+    colours = np.copy(array)
+    colours[
+        np.array(
+            [ isBlack( a , c.black_colour.get("limits") ) for a in array ]
+        ) == True
+    ] = c.black_colour.get(format)
+    colours[
+        np.array(
+            [ isWhite( a , c.white_colour.get("limits") ) for a in array ]
+        )
+    ] = c.white_colour.get(format)
+
+    return colours
