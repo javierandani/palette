@@ -1,12 +1,14 @@
 import numpy as np
+import pandas as pd
+import copy
 import math
 import cv2
 from PIL import ImageColor
 from skimage.transform import downscale_local_mean
-from sklearn.cluster import *
 import config as cf
 import constants as c
 import functions as f
+import visualization as v
 import conversions as convers
 
 # Read image
@@ -20,22 +22,31 @@ def read_image(files , format):
 # Extract all points from image into a nx3 vector
 def extract_pixels(image, factor):
 
-    # Change image format to RGB
-    #image = convers.change_image_format(image, cf.colour_format, "RGB")
-
     # Image resampling
     array = downscale_local_mean(image
                                  , factors = (factor , factor , 1)
                                  )
 
-    # Array extraction
+    # Change the size of the array
     array = np.reshape(array,
-                       (array.shape[0] * array.shape[1]
-                        , array.shape[2]
-                        )
+                       (np.prod(array.shape[0:len(array.shape) - 1]),
+                        array.shape[len(array.shape) - 1])
                        )
 
     return array
+
+
+def palette_extracting( array , config ):
+
+    # Palette extracting function
+    paletteFunction = {
+        "histogram": lambda x,y: histogram(x)
+        , "clustering": lambda x,y: cluster(x , y.get("mode") )
+    }.get(
+        config.get("technique")
+    )
+
+    return paletteFunction( array , config )
 
 
 # Histogram solution (extract N most important colours)
@@ -45,41 +56,75 @@ def histogram(array):
     maximum_values = c.maximum_values[cf.colour_format] if len(c.maximum_values[cf.colour_format]) == 3 else c.maximum_values[cf.colour_format][0]*np.ones(3, dtype = np.int8)
     number_bins = cf.number_bins[cf.colour_format] if len(cf.number_bins[cf.colour_format]) == 3 else cf.number_bins[cf.colour_format][0]*np.ones(3, dtype = np.int8)
 
-    # If array has 3D, turn into 2D
-    if (len(array.shape) == 3):
+    # Change the size of the array (if necessary)
+    if (len(array.shape) == c.dimensions.get(cf.colour_format)):
         array = np.reshape(array,
-                           (array.shape[0] * array.shape[1],
-                            array.shape[2]))
+                           (np.prod(array.shape[0:len(array.shape)-1]),
+                            array.shape[len(array.shape)-1])
+                           )
+
+    # Correct extreme values (white-black) if necessary
+    array = extremeColoursCorrection(
+        array
+        , cf.colour_format
+    )
 
     # Declare variables
-    module = np.divide(maximum_values, number_bins)     # Division of the 3D space
-    hist2gram = np.zeros( np.append(number_bins,4) )       # Add the fourth dimension
+    module = np.divide(maximum_values, number_bins)        # Division of the 3D-space
+    dimensions = np.append(
+        number_bins
+        , array.shape[len(array.shape)-1] + 2
+    )
+    hist2gram = np.zeros(dimensions)                       # Add N+2 dimensions (counting, the N-colours vector and the label)
 
-    # For each element in the array, let's get to which region it belongs
+    # For each element in the array, assign the region whom it belongs
+    labels = []
     for a in array:
 
-        # If maximum value, then assign 2. If not, get the index of the region in each dimension
-        c1 = int(2 if a[0] == maximum_values[0] else np.floor_divide(a[0], module[0]))
-        c2 = int(2 if a[1] == maximum_values[1] else np.floor_divide(a[1], module[1]))
-        c3 = int(2 if a[2] == maximum_values[2] else np.floor_divide(a[2], module[2]))
+        # If maximum value, then assign N-1. If not, get the index of the region in each dimension
+        c0 = [ int(number_bins[r]-1 if a[r] == maximum_values[r] else np.floor_divide(a[r], module[r])) for r in range(0,len(a)) ]
+        centroid = copy.copy(c0)
 
-        # Add 1 to the count and assign colour to region
-        hist2gram[c1, c2, c3, 0] = hist2gram[c1, c2, c3, 0] + 1
-        hist2gram[c1, c2, c3, 1] = (c1 + 0.5) * module[0]
-        hist2gram[c1, c2, c3, 2] = (c2 + 0.5) * module[1]
-        hist2gram[c1, c2, c3, 3] = (c3 + 0.5) * module[2]
+        # Counting index and centroid of the cluster
+        counting_index = tuple(
+            np.append( c0 , 0 )
+        )
+        centroid.append( range(1 , len(a)+1) )
+        label = tuple(
+            np.append( c0 , len(a)+1 )
+        )
+
+        # Add 1 to the count and assign the centroid colour
+        hist2gram[counting_index] = hist2gram[counting_index] + 1
+        hist2gram[centroid] = np.multiply(
+            np.add(c0 , 0.5)    # 0.5 as it is the center of the region
+            , module
+        )
+        hist2gram[label] = int(''.join(list([str(c) for c in c0])))
+
+        # Label that array element (c0 as string)
+        labels.append( hist2gram[label] )
 
     # Reshape elements
     hist2gram = np.reshape(hist2gram,
-                           [np.prod(number_bins), 4])
+                           [np.prod(number_bins), dimensions[::-1][0]])
 
     # Order (most appearances first)
-    hist2gram = hist2gram[np.argsort(hist2gram[:, 0])][::-1]
+    hist2gram = hist2gram[
+                    np.argsort(hist2gram[:, 0]),:
+                ][::-1]
 
     # Get number_colors first appearances (1: to remove the count of associated pixels)
     hist2gram = hist2gram[range(cf.number_colors), 1:]
 
-    return hist2gram
+    # Compose the output dictionary
+    output = {}
+    output["palette"] = hist2gram[ range(cf.number_colors) , : ][ : , range(1 , len(a)+1) ]
+    output["palette_labels"] = { h[len(h)-1]: h[range(1,len(h))] for h in hist2gram }
+    output["labels"] = labels
+    output["array"] = array
+
+    return output
 
 
 def palette_change(image, originPalette, destinyPalette):
@@ -90,10 +135,12 @@ def palette_change(image, originPalette, destinyPalette):
 
     # If image has 3D, turn into 2D
     dimensions = image.shape
-    if (len(image.shape) == 3):
-        image = np.reshape(image,
-                           (image.shape[0] * image.shape[1],
-                            image.shape[2]))
+    # Change the size of the array (if necessary)
+    if (len(image.shape) == c.dimensions.get(cf.colour_format)):
+        array = np.reshape(image,
+                           (np.prod(image.shape[0:len(image.shape) - 1]),
+                            image.shape[len(image.shape) - 1])
+                           )
 
     # Get transform ratios
     ratio = []
@@ -137,101 +184,44 @@ def palette_change(image, originPalette, destinyPalette):
 
 def cluster(array, method):
 
-    # If array has 3D, turn into 2D
-    if (len(array.shape) == 3):
+    # Change the size of the array (if necessary)
+    if (len(array.shape) == c.dimensions.get(cf.colour_format)):
         array = np.reshape(array,
-                           (array.shape[0] * array.shape[1],
-                            array.shape[2]))
+                           (np.prod(array.shape[0:len(array.shape) - 1]),
+                            array.shape[len(array.shape) - 1])
+                           )
 
-    # Remove incorrect pixels
+    # Correct extreme values (white-black) if necessary
     array = extremeColoursCorrection(
         array
         , cf.colour_format
     )
-    #array = removeIncorrectPx(
-    #    array
-    #    , cf.colour_format
-    #)
+
+    # Extract points and generate dataFrame
+    points = pd.DataFrame(
+        columns = list(cf.colour_format)
+    )
+    for col in points.columns:
+        points[col] = array[ : , cf.colour_format.find(col) ]
+    points["Aux"] = 0
 
     # Apply one clustering technique
-    clustering = {
-        'AffinityPropagation': AffinityPropagation(
-                damping = 0.5
-                , max_iter = cf.maximum_iterations
-                , convergence_iter = math.floor( cf.maximum_iterations*0.5 ) # 50% of the iterations
-                , copy = True
-                , preference = None
-                , affinity = 'euclidean'
-                , verbose = False
-                , random_state = None
-            )
-        , 'KMeans': KMeans(
-            n_clusters = cf.number_colors
-            , init = 'k-means++'
-            , n_init = 10
-            , max_iter = cf.maximum_iterations
-            , tol = 1e-4
-            , verbose = 0
-            , random_state = 0
-            , copy_x = True
-            , algorithm = 'auto'
-        )
-        , 'DBSCAN': DBSCAN(
-            eps = 0.5
-            , min_samples = math.floor( max( array.shape ) * 0.05 ) # At least 5% of the points
-            , metric = 'euclidean'
-            , metric_params = None
-            , algorithm = 'auto' # Can be "auto", "ball_tree", "kd_tree", "brute"
-            , leaf_size = 30
-            , p = None
-            , n_jobs = None
-        )
-        , 'AgglomerativeClustering': AgglomerativeClustering(
-            n_clusters = None
-            , affinity = 'euclidean'
-            , memory = None
-            , connectivity = None
-            , compute_full_tree = 'auto'
-            , linkage = 'ward'
-            , distance_threshold = None
-            , compute_distances = False
-        )
-        , 'Birch': Birch(
-            threshold = 0.5
-            , branching_factor = 50
-            , n_clusters = None
-            , compute_labels = True
-            , copy = True
-        )
-        , 'SpectralClustering': SpectralClustering(
-            n_clusters = math.floor( 1.5*cf.number_colors ) # At least a 50% more of the number of colours to be extracted
-            , eigen_solver = None
-            , n_components = None
-            , random_state = None
-            , n_init = 10
-            , gamma = 1.0
-            , affinity = 'rbf'
-            , n_neighbors = 10  # Ignored for affinity = "rbf"
-            , eigen_tol = 0.0
-            , assign_labels = 'kmeans'
-            , degree = 3
-            , coef0 = 1
-            , kernel_params = None
-            , n_jobs = None
-            , verbose = False
-        )
-    }.get( method ).fit( array )
+    clusteringFunction = c.clustering_function.get( method )
 
     # Extract the clustering centers, and the label of each points
+    clustering = clusteringFunction.fit( points[c.dataFrameColumns.get(cf.colour_format)] )
     labels = clustering.labels_
 
-    # If all the labels are -1, the clustering algorithm has not worked. Use as a backup KMeans
-    if all(labels == -1):
+    # If there is less than Number Colors centroids, the clustering algorithm has not worked. Use as a backup KMeans
+    if len(list(set(labels))) < cf.number_colors:
         print(method+" has not provided any results. Instead, KMeans method is used instead")
-        return cluster(array, "KMeans")
+        return cluster(array , "KMeans" )
 
-    # Get all the centroids
-    centroids = getCentroids(array, labels)
+    # Get all the centroids (note that the clustering is by points and the centroids are computed via the whole array)
+    centroids, colours = getCentroids( array , labels )
+
+    # Represent all the pixels via its centroids
+    # v.represent_pixels( array , colours )
 
     # Compose the count of the clusters
     centroid_order = np.zeros((max(centroids.shape), 2))
@@ -247,6 +237,13 @@ def cluster(array, method):
               centroid_order[:cf.number_colors, 0].astype(np.uint8), :
     ].astype(np.uint8)
 
+    # Compose the output dictionary
+    output = {}
+    output["palette"] = palette
+    output["palette_labels"] = { l: centroids[l,:] for l in range(centroids.shape[0]) }
+    output["labels"] = labels
+    output["array"] = array
+
     return palette
 
 
@@ -257,6 +254,7 @@ def getCentroids(array, labels):
         max(labels)+1
         , c.dimensions.get(cf.colour_format)
     ) )
+    colours = np.zeros( array.shape )
 
     # Compute for all the elements in the array, the mean coordinates
     for r in range(0,max(centroids.shape)):
@@ -265,7 +263,11 @@ def getCentroids(array, labels):
             , axis = 0
         )
 
-    return centroids
+    # Assign for each array element the colour of its centroid
+    for r in range(0,max(array.shape)):
+        colours[r,:] = centroids[labels[r],:]
+
+    return centroids, colours
 
 
 def normalizeImageFunction(image, format):
@@ -294,11 +296,12 @@ def normalizeImageFunction(image, format):
 # Remove out-of-range pixels
 def removeIncorrectPx( array , format ):
 
-    # If array has 3D, turn into 2D
-    if (len(array.shape) == 3):
+    # Change the size of the array (if necessary)
+    if (len(array.shape) == c.dimensions.get(format)):
         array = np.reshape(array,
-                           (array.shape[0] * array.shape[1],
-                            array.shape[2]))
+                           (np.prod(array.shape[0:len(array.shape) - 1]),
+                            array.shape[len(array.shape) - 1])
+                           )
 
     # For every pixel, check whether it is valid or not
     if len(array.shape) > 1:
@@ -314,11 +317,12 @@ def removeIncorrectPx( array , format ):
 # Convert to black and white pixels (depending on the colour format)
 def extremeColoursCorrection( array , format ):
 
-    # If array has 3D, turn into 2D
-    if (len(array.shape) == 3):
+    # Change the size of the array (if necessary)
+    if (len(array.shape) == c.dimensions.get(format)):
         array = np.reshape(array,
-                           (array.shape[0] * array.shape[1],
-                            array.shape[2]))
+                           (np.prod(array.shape[0:len(array.shape) - 1]),
+                            array.shape[len(array.shape) - 1])
+                           )
 
     # Black and white conditions
     isBlack = {

@@ -10,7 +10,7 @@ number_bins = {"RGB": [3]
               }
 
 # Number of colours of the palette
-number_colors = 6
+number_colors = 5
 
 # Default colour palette
 default_palette = ["#DAF7A6","#FFC300","#FF5733","#C70039","#900C3F","#581845"]
@@ -24,8 +24,14 @@ removal_interval = {"min": 10, "max": 100}
 # When changing the colour palette, define the intensity of the change ["soft","medium","hard"]
 change_mode = "soft"
 
+# Palette extracting mode ["histogram","clustering"]
+palette_extracting_mode = "clustering"
+
 # Clustering technique
-clustering_technique = "DBSCAN"
+clustering_mode = "KMeans"
+
+# Minimum percentage of pixels to conform a cluster
+pct_min_px_cluster = 5
 
 # Maximum iteration (clustering algorithms)
 maximum_iterations = 500

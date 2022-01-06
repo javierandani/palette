@@ -4,7 +4,7 @@ import processing as p
 import visualization as v
 
 # Load all images
-filenames = os.listdir(os.getcwd() + "\img\.")
+filenames = os.listdir( os.getcwd() + "\img\." )
 
 for files in filenames:
 
@@ -15,20 +15,22 @@ for files in filenames:
     array = p.extract_pixels(image, cf.sampling_rate)
 
     # Represent pixels
-    v.represent_pixels(array)
+    v.represent_pixels(p.removeIncorrectPx( array , cf.colour_format ))
 
-    # Color histogram
-    palette = p.histogram(array)
-
-    # ML Clustering
-    palette_clustering = p.cluster( array , cf.clustering_technique )
+    # Palette extracting
+    paletteInstance = p.palette_extracting(
+        array
+        , {
+            "technique": cf.palette_extracting_mode
+            , "mode": cf.clustering_mode
+        }
+    )
 
     # Plot both image and colour palette
-    v.figure_palette_plot(files.split(".")[0] + "_histogram_palette", image, palette)
-    v.figure_palette_plot(files.split(".")[0] + "_cluster_palette", image, palette_clustering)
+    v.figure_palette_plot(files.split(".")[0] + "_" + cf.palette_extracting_mode + "_palette", image, paletteInstance.get("palette"))
 
     # Transform changing palette
-    new_image, new_palette = p.palette_change( image, palette, cf.default_palette)
+    #new_image, new_palette = p.palette_change( image, palette, cf.default_palette)
 
     # Represent new image
-    v.figure_palette_plot( files.split(".")[0] + "new_palette" , new_image , new_palette)
+    #v.figure_palette_plot( files.split(".")[0] + "new_palette" , new_image , new_palette)

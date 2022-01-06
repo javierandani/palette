@@ -58,14 +58,24 @@ def figure_palette_plot(fileName, image, palette):
                        True)        # Save Figure
 
 
-def represent_pixels(array):
+def represent_pixels(array, *args):
 
-    # Normalize colours
-    colours = convers.normalize(
-        np.array( [ convers.colour_conversion( a , cf.colour_format , "RGB") for a in array ] )
-        , "RGB"
-        , True
-    )
+    # Normalize colours (if there is more than 1 argument, then use the first one as input)
+    if len(args) == 0:
+        colours = convers.normalize(
+            np.array( [ convers.colour_conversion( a , cf.colour_format , "RGB") for a in array ] )
+            , "RGB"
+            , True
+        )
+    else:
+        colours = convers.normalize(
+            np.array( [ convers.colour_conversion( a , cf.colour_format , "RGB") for a in args[0] ] )
+            , "RGB"
+            , True
+        )
+
+    # Maximum values
+    maximum_values = c.maximum_values.get( cf.colour_format )
 
     # Represent figure
     fig = plt.figure()
@@ -75,7 +85,7 @@ def represent_pixels(array):
     config = {
         "polar":
             {
-                "theta": array[:,0] * 2 * np.pi / np.max(array[:,0])
+                "theta": array[:,0] * 2 * np.pi / maximum_values[0]
                 , "radius": array[:,1] / np.max(array[:,1])
                 , "colours": colours # convers.normalize( array , cf.colour_format , True ) # array[:,0] * 2 * np.pi / np.max(array[:,0])
                 , "area": 200 * (array[:,1] / np.max(array[:,1])) ** 2
