@@ -71,7 +71,7 @@ projections = {"RGB": "3d"
 # DataFrame columns to export
 dataFrameColumns = {
     "RGB": list(cf.colour_format)
-    , "HSV": [list(cf.colour_format)[0],"Aux"]
+    , "HSV": [list(cf.colour_format)[0]]
 }
 
 # Clustering functions
@@ -158,3 +158,13 @@ clustering_function = {
         , n_jobs = None
     )
 }
+
+# Colours exchangings
+colour_exhanges = [
+    [0 , 0]
+    , [1 , 1]
+    , [2 , 2]
+    , [3 , 3]
+    , [4 , 4]
+    , [5 , 5]
+]

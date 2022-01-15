@@ -28,33 +28,81 @@ def extract_pixels(image, factor):
                                  )
 
     # Change the size of the array
+    image_shape = array.shape
     array = np.reshape(array,
                        (np.prod(array.shape[0:len(array.shape) - 1]),
                         array.shape[len(array.shape) - 1])
                        )
 
-    return array
+    return array, image_shape
 
 
 def palette_extracting( array , config ):
 
     # Palette extracting function
-    paletteFunction = {
-        "histogram": lambda x,y: histogram(x)
-        , "clustering": lambda x,y: cluster(x , y.get("mode") )
+    palette_function = {
+        "histogram": lambda x,y: histogram(x , y)
+        , "clustering": lambda x,y: cluster(x , y )
     }.get(
         config.get("technique")
     )
 
-    return paletteFunction( array , config )
+    # Extract result of the paletteFunction
+    output = palette_function( array , config )
+    palette_labels = copy.copy(output.get("palette_labels"))   # As it changes with iterations
+
+    # Is needed any sub-clustering?
+    for k in palette_labels:
+
+        # Extract cluster's statistics (for every dimension
+        stats = {
+            cf.colour_format[r]: f.statistics(
+                array[ output.get("labels") == k , r ]
+            )
+            for r in range(0 , output.get("array").shape[1])
+        }
+
+        # Determine which dimension/s must be considered to be re-clustered
+        dimensions = f.find(
+            stats
+            , "std_dev"
+            , 50
+            , lambda x, y: x > y
+        )
+        n_dimensions = len(dimensions)
+
+        # Re-cluster (if dimensions is greater than 1)
+        if n_dimensions > 0:
+
+            # New configuration: change clustering dimensions, add custom options and re-define the number of colours to be extracted
+            new_config = copy.copy(config)
+            new_config["dimensions"] = dimensions
+            new_config["custom"] = {"n_clusters": math.ceil(1.5*n_dimensions) }     # Each dimension can afford 1.5 sub-clusters
+            new_config["colours"] = math.ceil(1.5*n_dimensions)                     # Number of colours to obtain
+
+            # Re-cluster
+            aux_output = palette_function(
+                array[ output.get("labels") == k , : ]
+                , new_config
+            )
+
+            # Modify current output
+            # 1. Add new palette_labels (parent_label + new_label, i.e. "01")
+            # 2. Modify labels (parent_label + new_label, i.e. "01")
+            output.get("labels")[output.get("labels") == k] = [str(k) + a for a in aux_output.get("labels").astype(str)]
+            for p in aux_output.get("palette_labels"):
+                output.get("palette_labels")[str(k)+p] = aux_output.get("palette_labels").get(p)
+
+    return output
 
 
 # Histogram solution (extract N most important colours)
-def histogram(array):
+def histogram(array, config):
 
     # Assign variables
-    maximum_values = c.maximum_values[cf.colour_format] if len(c.maximum_values[cf.colour_format]) == 3 else c.maximum_values[cf.colour_format][0]*np.ones(3, dtype = np.int8)
-    number_bins = cf.number_bins[cf.colour_format] if len(cf.number_bins[cf.colour_format]) == 3 else cf.number_bins[cf.colour_format][0]*np.ones(3, dtype = np.int8)
+    format = copy.copy(config.get("format"))
+    maximum_values = c.maximum_values[format] if len(c.maximum_values[format]) == 3 else c.maximum_values[format][0]*np.ones(3, dtype = np.int8)
+    number_bins = cf.number_bins[format] if len(cf.number_bins[format]) == 3 else cf.number_bins[format][0]*np.ones(3, dtype = np.int8)
 
     # Change the size of the array (if necessary)
     if (len(array.shape) == c.dimensions.get(cf.colour_format)):
@@ -118,74 +166,30 @@ def histogram(array):
     hist2gram = hist2gram[range(cf.number_colors), 1:]
 
     # Compose the output dictionary
-    output = {}
-    output["palette"] = hist2gram[ range(cf.number_colors) , : ][ : , range(1 , len(a)+1) ]
-    output["palette_labels"] = { h[len(h)-1]: h[range(1,len(h))] for h in hist2gram }
-    output["labels"] = labels
-    output["array"] = array
+    output = {
+        "palette": hist2gram[ range(cf.number_colors) , : ][ : , range(1 , len(a)+1) ]
+        , "palette_labels": { h[len(h)-1]: h[range(1,len(h))] for h in hist2gram }
+        , "labels": labels
+        , "array": array
+    }
 
     return output
 
 
-def palette_change(image, originPalette, destinyPalette):
+def cluster(array, config):
 
-    # Downsize image
-    image = downscale_local_mean(image,
-                                 factors = (cf._sampling_rate, cf._sampling_rate, 1))
+    # Extract variables from the config variable
+    format = copy.copy(config.get("format"))           # Colour format
+    method = copy.copy(config.get("mode"))             # Clustering technique
+    dimensions = copy.copy(config.get("dimensions"))   # Dimensions to cluster by
+    number_colours = copy.copy(config.get("colours"))  # Number of maximum clusters
+    custom = copy.copy(config.get("custom"))           # Changes respect to the default technique
 
-    # If image has 3D, turn into 2D
-    dimensions = image.shape
-    # Change the size of the array (if necessary)
-    if (len(image.shape) == c.dimensions.get(cf.colour_format)):
-        array = np.reshape(image,
-                           (np.prod(image.shape[0:len(image.shape) - 1]),
-                            image.shape[len(image.shape) - 1])
-                           )
-
-    # Get transform ratios
-    ratio = []
-    palette_names = []
-    new_palette = []
-    for iter in range(originPalette.shape[0]):
-
-        # Compose ratios
-        color_new_palette = ImageColor.getcolor( destinyPalette[iter] , cf.colour_format )
-        new_palette = np.append( new_palette , color_new_palette)
-        ratio = np.append( ratio , color_new_palette - originPalette[iter,:])
-
-        # Compose names of the palettes
-        palette_names = np.append(palette_names, ''.join(str(originPalette[iter,:])))
-
-    # Reshapes
-    ratio = np.reshape(ratio, originPalette.shape)
-    new_palette = np.reshape(new_palette, originPalette.shape)
-
-    # For each element in the image, perform transformation based on ratio, depending on the colour it is assigned to
-    for iter in range(image.shape[0]):
-
-        # Find the nearest point for current image
-        near_point = f.nearest_point(image[iter,:], originPalette)
-
-        # Find the palette element and apply corresponding ratio
-        index = np.where(palette_names == ''.join(str(near_point)))
-
-        # Apply ratio to the current element
-        image[iter,:] = image[iter,:] + ratio[index,:]
-
-    # Establish boundaries of the image
-    image = normalizeImageFunction( image , cf.colour_format )
-
-    # Cast the whole image to int, and resize
-    image = image.astype(np.uint8)
-    image = np.reshape(image, dimensions)
-
-    return image, new_palette
-
-
-def cluster(array, method):
+    # If there is only one dimension, add an auxiliary field
+    dimensions.append("Aux") if len(dimensions) == 1 else None
 
     # Change the size of the array (if necessary)
-    if (len(array.shape) == c.dimensions.get(cf.colour_format)):
+    if (len(array.shape) == c.dimensions.get(format)):
         array = np.reshape(array,
                            (np.prod(array.shape[0:len(array.shape) - 1]),
                             array.shape[len(array.shape) - 1])
@@ -194,34 +198,38 @@ def cluster(array, method):
     # Correct extreme values (white-black) if necessary
     array = extremeColoursCorrection(
         array
-        , cf.colour_format
+        , format
     )
 
     # Extract points and generate dataFrame
     points = pd.DataFrame(
-        columns = list(cf.colour_format)
+        columns = list(format)
     )
     for col in points.columns:
-        points[col] = array[ : , cf.colour_format.find(col) ]
+        points[col] = array[ : , format.find(col) ]
     points["Aux"] = 0
 
-    # Apply one clustering technique
+    # Apply one clustering technique (change any parameter if needed)
     clusteringFunction = c.clustering_function.get( method )
+    if bool(custom):  # If not empty
+        for att in custom:
+            clusteringFunction.__setattr__( att, custom.get(att) )
 
     # Extract the clustering centers, and the label of each points
-    clustering = clusteringFunction.fit( points[c.dataFrameColumns.get(cf.colour_format)] )
+    clustering = clusteringFunction.fit( points[dimensions] )
     labels = clustering.labels_
 
     # If there is less than Number Colors centroids, the clustering algorithm has not worked. Use as a backup KMeans
-    if len(list(set(labels))) < cf.number_colors:
+    if len(list(set(labels))) < number_colours:
         print(method+" has not provided any results. Instead, KMeans method is used instead")
-        return cluster(array , "KMeans" )
+        config["mode"] = "KMeans"
+        return cluster(array , config )
 
     # Get all the centroids (note that the clustering is by points and the centroids are computed via the whole array)
     centroids, colours = getCentroids( array , labels )
 
     # Represent all the pixels via its centroids
-    # v.represent_pixels( array , colours )
+    v.represent_pixels( array , colours )
 
     # Compose the count of the clusters
     centroid_order = np.zeros((max(centroids.shape), 2))
@@ -232,19 +240,21 @@ def cluster(array, method):
     # Reorder centroids
     centroid_order = centroid_order[np.argsort(centroid_order[:, 1])][::-1]
 
-    # Assign the N first elements to the palette
-    palette = centroids[
-              centroid_order[:cf.number_colors, 0].astype(np.uint8), :
-    ].astype(np.uint8)
+    # Assign the N first elements to the palette (REVISE??????????)
+    palette = []
+    [ palette.append(centroids[r, :]) if r in centroid_order[:number_colours, 0] else [] for r in range(0, number_colours) ]
+    palette = [ centroids[r in centroid_order[:number_colours,0].astype(np.uint8) ] for r in range(0,number_colours) ]
+    palette = np.ndarray( [ number_colours , c.dimensions.get(format) ] )
 
     # Compose the output dictionary
-    output = {}
-    output["palette"] = palette
-    output["palette_labels"] = { l: centroids[l,:] for l in range(centroids.shape[0]) }
-    output["labels"] = labels
-    output["array"] = array
+    output = {
+        "palette": palette.astype(np.uint8)
+        , "palette_labels": { str(l): centroids[l,:] for l in range(centroids.shape[0]) }
+        , "labels": labels.astype(str)
+        , "array": array
+    }
 
-    return palette
+    return output
 
 
 def getCentroids(array, labels):
@@ -257,17 +267,67 @@ def getCentroids(array, labels):
     colours = np.zeros( array.shape )
 
     # Compute for all the elements in the array, the mean coordinates
-    for r in range(0,max(centroids.shape)):
+    for r in range(0,centroids.shape[0]):
         centroids[r,:] = np.mean(
             array[labels == r]
             , axis = 0
         )
 
     # Assign for each array element the colour of its centroid
-    for r in range(0,max(array.shape)):
+    for r in range(0,array.shape[0]):
         colours[r,:] = centroids[labels[r],:]
 
     return centroids, colours
+
+
+def palette_change(originPalette, config, destinyPalette):
+
+    # Extract variables
+    dimensions = config.get("dimensions")
+    numberColours = config.get("numberColours")
+    exchanges = config.get("exchanges")
+    format = config.get("format")
+    image_shape = config.get("image_shape")
+
+    # Extract variables from originPalette
+    array = originPalette.get("array")
+    palette = originPalette.get("palette")
+    palette_labels = originPalette.get("palette_labels")
+    labels = originPalette.get("labels")
+
+    # Get current dimensions (to be used in translation)
+    cols = []
+    for d in dimensions:
+        cols.append( cf.colour_format.find(d) )
+
+    # Get transform ratios
+    ratio = {}
+    #palette_names = []
+    new_palette = copy.copy(palette)
+    for iter in range(numberColours):
+
+        # Compose ratios
+        color_new_palette = np.array(list(ImageColor.getcolor( destinyPalette[exchanges[iter][1]] , cf.colour_format )))
+        new_palette[iter] = color_new_palette
+        ratio[str(exchanges[iter][0])] = list(color_new_palette[cols] - palette[exchanges[iter][0],cols])
+
+        # Compose names of the palettes
+        #palette_names = np.append(palette_names, ''.join(str(originPalette[iter,:])))
+
+    # For each element in the image, perform transformation based on ratio, depending on the colour it is assigned to
+    image = copy.copy(array)
+    image[:,cols] = [
+        image[r,cols] + ratio.get(labels[r][0]) if ratio.get(labels[r][0]) != None else image[r,cols] for r in range(0,image.shape[0])  # labels[r][0] to get the clusters ID (first character)
+    ]
+
+    # Establish boundaries at the image
+    image = normalizeImageFunction( image , cf.colour_format )
+
+    # Cast the whole image to int, and resize
+    image = image.astype(np.uint8)
+    image = np.reshape(image, image_shape)
+
+    return image, new_palette
 
 
 def normalizeImageFunction(image, format):

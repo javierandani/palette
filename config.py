@@ -1,5 +1,5 @@
-# Sampling rate (histogram)
-sampling_rate = 5
+# Sampling rate
+sampling_rate = 1
 
 # Sampling rate (image representation)
 _sampling_rate = 2

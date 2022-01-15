@@ -63,3 +63,27 @@ def isInRange(value, min_value, max_value):
         valid = value == np.clip( value, min_value , max_value)
 
     return valid
+
+
+def statistics(x):
+
+    # Define main statistics of a variable
+    output = {
+        "mean": np.mean(x)
+        , "std_dev": np.std(x)
+        , "var": np.var(x)
+        , "median": np.median(x)
+    }
+
+    return output
+
+
+def find(lst, key, value, condition):
+
+    # Define output list
+    output = []
+    for i, dic in enumerate(lst):
+        if condition(lst[dic][key],value):
+            output.append(dic)
+
+    return output
